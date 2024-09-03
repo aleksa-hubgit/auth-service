@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS tokens (
+    id SERIAL PRIMARY KEY,
+    tokenString VARCHAR(200) NOT NULL,
+    username VARCHAR(30) NOT NULL
+)
