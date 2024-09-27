@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -25,8 +26,9 @@ type TokenResponse struct {
 }
 
 type Service interface {
-	AuthUser(context.Context, AuthRequest) (*string, error)
-	VerifyToken(context.Context, string) (*string, bool, error)
+	Login(context.Context, LoginRequest) (*string, error)
+	Verify(context.Context, string) (*string, bool, error)
+	Register(context.Context, RegisterRequest) error
 }
 
 type AuthService struct {
@@ -38,8 +40,8 @@ func NewAuthService(database *data.Queries, httpClient http.Client) Service {
 	return &AuthService{database: database, httpClient: httpClient}
 }
 
-func (s *AuthService) AuthUser(ctx context.Context, ar AuthRequest) (*string, error) {
-	resp, err := s.httpClient.Get(fmt.Sprintf("http://user-service:8080/%s", ar.Username))
+func (s *AuthService) Login(ctx context.Context, lr LoginRequest) (*string, error) {
+	resp, err := s.httpClient.Get(fmt.Sprintf("http://user-service:8080/%s", lr.Username))
 	if err != nil {
 		fmt.Println(err)
 		return nil, err
@@ -53,18 +55,18 @@ func (s *AuthService) AuthUser(ctx context.Context, ar AuthRequest) (*string, er
 	if err != nil {
 		return nil, err
 	}
-	if userResp.Password != ar.Password || userResp.Username != ar.Username {
+	if userResp.Password != lr.Password || userResp.Username != lr.Username {
 		return nil, errors.New("invalid credentials")
 	}
 
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"username": ar.Username,
+		"username": lr.Username,
 		"exp":      time.Now().Add(time.Minute * 30).Unix(),
 	})
 	tokenString, err := token.SignedString(secretKey)
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"username": ar.Username,
+		"username": lr.Username,
 		"exp": time.Now().Add(time.Hour * 24).Unix(),
 	})
 	if err != nil {
@@ -74,7 +76,7 @@ func (s *AuthService) AuthUser(ctx context.Context, ar AuthRequest) (*string, er
 	if err != nil {
 		return nil, err
 	}
-	s.database.CreateToken(ctx, data.CreateTokenParams{ Tokenstring: refreshTokenString, Username: ar.Username})
+	s.database.CreateToken(ctx, data.CreateTokenParams{ Tokenstring: refreshTokenString, Username: lr.Username})
 	return &tokenString, nil
 }
 
@@ -90,7 +92,7 @@ func (s *AuthService) refreshToken(username string) (*string, error) {
 	return &tokenString, nil
 }
 
-func (s *AuthService) VerifyToken(ctx context.Context, tokenString string) (*string,bool, error) {
+func (s *AuthService) Verify(ctx context.Context, tokenString string) (*string,bool, error) {
 	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
 		return secretKey, nil
 	})
@@ -135,4 +137,27 @@ func (s *AuthService) hasValidRefresh(ctx context.Context, username string) (boo
 
 func (s *AuthService) deleteRefreshToken(ctx context.Context, tokenID int32) error {
 	return s.database.DeleteToken(ctx, tokenID)
+}
+func (s *AuthService) Register(ctx context.Context, rr RegisterRequest) error {
+	requestBody, err := json.Marshal(rr)
+	if err != nil {
+		return err
+	}
+	req , err := http.NewRequestWithContext(ctx, "POST", "http://user-service:8080/users", bytes.NewBuffer(requestBody))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	client := http.Client{
+		Timeout: time.Second * 10,
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return errors.New("could not register user")
+	}
+	return nil
 }

@@ -9,8 +9,9 @@ import (
 
 
 type Handler interface {
-	AuthUser(c *gin.Context)
-	VerifyToken(c *gin.Context)
+	Login(c *gin.Context)
+	Verify(c *gin.Context)
+	Register(c *gin.Context)
 }
 
 type AuthHandler struct {
@@ -22,7 +23,7 @@ func NewAuthHandler(service Service) Handler {
 }
 
 
-func (h *AuthHandler) VerifyToken(ctx *gin.Context) {
+func (h *AuthHandler) Verify(ctx *gin.Context) {
 	bearerToken := ctx.Request.Header.Get("Authorization")
 	if bearerToken == "" {
 		ctx.JSON(http.StatusUnauthorized, gin.H{
@@ -31,7 +32,7 @@ func (h *AuthHandler) VerifyToken(ctx *gin.Context) {
 		return
 	}
 	tokenString := strings.Split(bearerToken, " ")[1]
-	token, refresh, err := h.service.VerifyToken(ctx, tokenString)
+	token, refresh, err := h.service.Verify(ctx, tokenString)
 	if err != nil {
 		ctx.JSON(http.StatusUnauthorized, gin.H{
 			"message": "unauthorized",
@@ -51,17 +52,17 @@ func (h *AuthHandler) VerifyToken(ctx *gin.Context) {
 	})
 }
 
-func (h *AuthHandler) AuthUser(ctx *gin.Context) {
-	var authRequest AuthRequest
+func (h *AuthHandler) Login(ctx *gin.Context) {
+	var loginRequest LoginRequest
 
-	if err := ctx.ShouldBindJSON(&authRequest); err != nil {
+	if err := ctx.ShouldBindJSON(&loginRequest); err != nil {
         ctx.JSON(http.StatusBadRequest, gin.H{
             "message": "invalid request",
             "error": err.Error(),
         })
         return
     }
-	token, err := h.service.AuthUser(ctx, authRequest)
+	token, err := h.service.Login(ctx, loginRequest)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"message": "invalid credentials",
@@ -72,6 +73,29 @@ func (h *AuthHandler) AuthUser(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{
 		"message": "success",
 		"token": token,
+	})
+}
+
+func (h *AuthHandler) Register(ctx *gin.Context) {
+	var registerRequest RegisterRequest
+
+	if err := ctx.ShouldBindJSON(&registerRequest); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": "invalid request",
+			"error": err.Error(),
+		})
+		return
+	}
+	err := h.service.Register(ctx, registerRequest)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": "invalid request",
+			"error": err.Error(),
+		})
+		return 
+	}
+	ctx.JSON(http.StatusOK, gin.H{
+		"message": "success",
 	})
 }
 

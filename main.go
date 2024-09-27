@@ -35,8 +35,12 @@ func main() {
 	service := NewAuthService(database, httpClient)
 	handler := NewAuthHandler(service)
 	r := gin.Default()
-	r.GET("/verify", handler.VerifyToken)
-	r.POST("/login", handler.AuthUser)
+	group := r.Group("/auth")
+	{
+		group.GET("/verify", handler.Verify)
+		group.POST("/login", handler.Login)
+		group.POST("/register", handler.Register)
+	}
 	if err := r.Run(":8080"); err != nil {
 		log.Fatalf("could not run server: %v", err)
 	}
